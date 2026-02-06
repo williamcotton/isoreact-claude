@@ -19,9 +19,21 @@ app.use(express.urlencoded({ extended: true }));
 const clientDir = path.resolve(__dirname, '../client');
 app.use('/static', express.static(clientDir, { maxAge: '1y', immutable: true }));
 
-// Build asset manifest from filenames
-function getAssets() {
-  const files = fs.readdirSync(clientDir);
+interface BuildAssets {
+  js: string[];
+  css: string[];
+}
+
+// Build asset manifest once at startup to avoid per-request disk reads.
+function loadAssets(): BuildAssets {
+  let files: string[] = [];
+  try {
+    files = fs.readdirSync(clientDir);
+  } catch (err) {
+    console.error(`Failed to read client assets from ${clientDir}:`, err);
+    return { js: [], css: [] };
+  }
+
   const js: string[] = [];
   const css: string[] = [];
 
@@ -34,7 +46,29 @@ function getAssets() {
   if (mainJs) js.push(`/static/${mainJs}`);
   if (mainCss) css.push(`/static/${mainCss}`);
 
+  // Fallback if naming convention changes.
+  if (js.length === 0) {
+    js.push(
+      ...files
+        .filter((f) => f.endsWith('.js'))
+        .map((f) => `/static/${f}`)
+        .sort()
+    );
+  }
+  if (css.length === 0) {
+    css.push(
+      ...files
+        .filter((f) => f.endsWith('.css'))
+        .map((f) => `/static/${f}`)
+        .sort()
+    );
+  }
+
   return { js, css };
+}
+const buildAssets = loadAssets();
+function getAssets(): BuildAssets {
+  return buildAssets;
 }
 
 // GraphQL

@@ -24,15 +24,49 @@ export function registerRoutes(app: UniversalApp) {
   app.get('/songs/:id', async (req, res) => {
     const result = await req.graphql<{ song: Song | null }>(SONG_QUERY, { id: req.params.id });
     const song = result.data?.song ?? null;
+    if (!song) {
+      res.setStatus(404);
+    }
     const { SongDetail } = await import('@components/pages/SongDetail');
     res.renderApp(<SongDetail song={song} />);
   });
 
   app.post('/songs', async (req, res) => {
-    const { title, artist, album, year } = req.body ?? {};
-    await req.graphql(CREATE_SONG_MUTATION, {
-      input: { title, artist, album: album || undefined, year: year || undefined },
+    const body = req.body ?? {};
+    const title = typeof body.title === 'string' ? body.title.trim() : '';
+    const artist = typeof body.artist === 'string' ? body.artist.trim() : '';
+    const album = typeof body.album === 'string' ? body.album.trim() : '';
+    const year = typeof body.year === 'string' ? body.year.trim() : '';
+
+    const { CreateSong } = await import('@components/pages/CreateSong');
+    const initialValues = { title, artist, album, year };
+
+    if (!title || !artist) {
+      res.setStatus(400);
+      res.renderApp(
+        <CreateSong errorMessage="Title and artist are required." initialValues={initialValues} />
+      );
+      return;
+    }
+
+    const result = await req.graphql<{ createSong: Song | null }>(CREATE_SONG_MUTATION, {
+      input: {
+        title,
+        artist,
+        album: album || undefined,
+        year: year || undefined,
+      },
     });
+
+    if (result.errors?.length || !result.data?.createSong) {
+      const message =
+        result.errors?.map((error) => error.message).join(' ') ||
+        'Unable to create song. Please check the form and try again.';
+      res.setStatus(400);
+      res.renderApp(<CreateSong errorMessage={message} initialValues={initialValues} />);
+      return;
+    }
+
     res.redirect('/songs');
   });
 }

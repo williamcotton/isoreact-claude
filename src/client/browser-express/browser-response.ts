@@ -7,6 +7,9 @@ export function createBrowserResponse(root: Root): UniversalResponse {
     renderApp(element: ReactElement) {
       root.render(element);
     },
+    setStatus(_code: number) {
+      // Browser navigation cannot set an HTTP status code.
+    },
     redirect(url: string) {
       window.history.pushState(null, '', url);
       window.dispatchEvent(new PopStateEvent('popstate'));

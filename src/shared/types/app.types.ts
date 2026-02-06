@@ -12,6 +12,7 @@ export interface UniversalRequest {
 
 export interface UniversalResponse {
   renderApp(element: ReactElement): void;
+  setStatus(code: number): void;
   redirect(url: string): void;
 }
 

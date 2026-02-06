@@ -1,6 +1,6 @@
 import { hydrateRoot } from 'react-dom/client';
 import type { Root } from 'react-dom/client';
-import type { UniversalApp, GraphQLExecutor, RouteHandler } from '@shared/types';
+import type { UniversalApp, UniversalResponse, GraphQLExecutor, RouteHandler } from '@shared/types';
 import { Router } from './router';
 import { createBrowserRequest } from './browser-request';
 import { createBrowserResponse } from './browser-response';
@@ -12,10 +12,14 @@ export interface BrowserApp extends UniversalApp {
 
 export function createBrowserApp(graphql: GraphQLExecutor): BrowserApp {
   const router = new Router();
-  let root: Root;
-  let hydrated = false;
+  let root: Root | null = null;
 
   async function handleNavigation(path: string, method: string, body?: any) {
+    if (!root) {
+      console.warn('Navigation attempted before hydration completed');
+      return;
+    }
+
     const [pathname] = path.split('?');
     const matched = router.match(method.toLowerCase(), pathname ?? path);
     if (!matched) {
@@ -41,7 +45,12 @@ export function createBrowserApp(graphql: GraphQLExecutor): BrowserApp {
       router.add('post', path, handler);
     },
     start() {
-      const container = document.getElementById('root')!;
+      const container = document.getElementById('root');
+      if (!container) {
+        console.error('Could not find hydration root element');
+        return;
+      }
+
       const path = window.location.pathname + window.location.search;
       const [pathname] = path.split('?');
       const matched = router.match('get', pathname ?? path);
@@ -54,20 +63,34 @@ export function createBrowserApp(graphql: GraphQLExecutor): BrowserApp {
       const req = createBrowserRequest(path, 'GET', matched.params, graphql);
 
       // For hydration, we render into the existing server HTML
-      const res = {
+      const res: UniversalResponse = {
         renderApp(element: any) {
           root = hydrateRoot(container, element);
-          hydrated = true;
+        },
+        setStatus(_code: number) {
+          // Client cannot change the status code of the initial HTTP response.
         },
         redirect(url: string) {
           window.location.href = url;
         },
       };
 
-      matched.handler(req, res);
+      void (async () => {
+        try {
+          await matched.handler(req, res);
+        } catch (err) {
+          console.error('Initial route error:', err);
+          return;
+        }
 
-      // After hydration, intercept future navigations
-      setupInterceptor(handleNavigation);
+        if (!root) {
+          console.error('Initial route did not render the app');
+          return;
+        }
+
+        // After hydration, intercept future navigations.
+        setupInterceptor(handleNavigation);
+      })();
     },
   };
 }

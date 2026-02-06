@@ -3,12 +3,11 @@ export function parseQueryString(search: string): Record<string, string> {
   const searchStr = search.startsWith('?') ? search.slice(1) : search;
   if (!searchStr) return params;
 
-  for (const pair of searchStr.split('&')) {
-    const [key, value] = pair.split('=');
-    if (key) {
-      params[decodeURIComponent(key)] = decodeURIComponent(value ?? '');
-    }
+  const queryParams = new URLSearchParams(searchStr);
+  for (const [key, value] of queryParams.entries()) {
+    params[key] = value;
   }
+
   return params;
 }
 

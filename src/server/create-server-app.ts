@@ -4,6 +4,15 @@ import type { Request, Response, Express } from 'express';
 import type { UniversalApp, UniversalRequest, UniversalResponse, GraphQLExecutor } from '@shared/types';
 import { parseQueryString } from '@shared/utils';
 
+function serializeForInlineScript(value: unknown): string {
+  return JSON.stringify(value)
+    .replace(/</g, '\\u003C')
+    .replace(/>/g, '\\u003E')
+    .replace(/&/g, '\\u0026')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
+}
+
 export function createServerApp(expressApp: Express, graphqlExecutor: GraphQLExecutor, getAssets: () => { js: string[]; css: string[] }): UniversalApp {
   function createHandler(handler: (req: UniversalRequest, res: UniversalResponse) => Promise<void> | void) {
     return async (expressReq: Request, expressRes: Response) => {
@@ -27,6 +36,7 @@ export function createServerApp(expressApp: Express, graphqlExecutor: GraphQLExe
         renderApp(element) {
           const html = renderToString(element);
           const assets = getAssets();
+          const initialData = serializeForInlineScript({ graphql: graphqlCache });
           const cssLinks = assets.css.map((href) => `<link rel="stylesheet" href="${href}">`).join('\n    ');
           const scriptTags = assets.js.map((src) => `<script defer src="${src}"></script>`).join('\n    ');
 
@@ -40,10 +50,13 @@ export function createServerApp(expressApp: Express, graphqlExecutor: GraphQLExe
 </head>
 <body>
     <div id="root">${html}</div>
-    <script>window.__INITIAL_DATA__ = { graphql: ${JSON.stringify(graphqlCache)} };</script>
+    <script>window.__INITIAL_DATA__ = ${initialData};</script>
     ${scriptTags}
 </body>
 </html>`);
+        },
+        setStatus(code) {
+          expressRes.status(code);
         },
         redirect(url) {
           expressRes.redirect(url);
