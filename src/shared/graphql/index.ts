@@ -1,5 +1,4 @@
-export { createSchema } from './schema';
-export type { Song } from './schema';
+export type { Song } from './types';
 export {
   SONGS_QUERY,
   SONG_QUERY,

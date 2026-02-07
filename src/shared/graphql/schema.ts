@@ -7,14 +7,7 @@ import {
   GraphQLInputObjectType,
   GraphQLBoolean,
 } from 'graphql';
-
-export interface Song {
-  id: string;
-  title: string;
-  artist: string;
-  album?: string;
-  year?: string;
-}
+import type { Song } from './types';
 
 const SongType = new GraphQLObjectType({
   name: 'Song',

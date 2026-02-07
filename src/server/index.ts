@@ -2,7 +2,7 @@ import express from 'express';
 import compression from 'compression';
 import path from 'path';
 import fs from 'fs';
-import { createSchema } from '@shared/graphql';
+import { createSchema } from '@shared/graphql/schema';
 import { dataStore, createServerExecutor, createGraphQLEndpoint } from './graphql';
 import { createServerApp } from './create-server-app';
 import { registerRoutes } from '@shared/universal-app';
