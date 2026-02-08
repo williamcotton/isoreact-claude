@@ -7,7 +7,7 @@ import {
   GraphQLInputObjectType,
   GraphQLBoolean,
 } from 'graphql';
-import type { Song } from './types';
+import type { Song, DataStore } from './types';
 
 const SongType = new GraphQLObjectType({
   name: 'Song',
@@ -40,14 +40,7 @@ const UpdateSongInputType = new GraphQLInputObjectType({
   },
 });
 
-export function createSchema(dataStore: {
-  getSongs: () => Song[];
-  getSong: (id: string) => Song | undefined;
-  getSongsByArtist: (artist: string) => Song[];
-  createSong: (input: Omit<Song, 'id'>) => Song;
-  updateSong: (id: string, input: Partial<Omit<Song, 'id'>>) => Song | null;
-  deleteSong: (id: string) => boolean;
-}) {
+export function createSchema(dataStore: DataStore) {
   const QueryType = new GraphQLObjectType({
     name: 'Query',
     fields: {

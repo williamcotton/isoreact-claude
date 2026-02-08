@@ -5,43 +5,10 @@ import request from 'supertest';
 import type { Express } from 'express';
 import { createGraphQLEndpoint } from '@server/graphql/endpoint';
 import { createSchema } from '@shared/graphql/schema';
-import type { Song } from '@shared/graphql';
-
-const SEED_SONGS: Song[] = [
-  { id: '1', title: 'Bohemian Rhapsody', artist: 'Queen', album: 'A Night at the Opera', year: '1975' },
-  { id: '2', title: 'Hotel California', artist: 'Eagles', album: 'Hotel California', year: '1977' },
-  { id: '3', title: 'Stairway to Heaven', artist: 'Led Zeppelin', album: 'Led Zeppelin IV', year: '1971' },
-];
+import { createDataStore } from '@server/graphql/data-store';
 
 function createApp(): Express {
-  let nextId = 4;
-  const songs: Song[] = SEED_SONGS.map((s) => ({ ...s }));
-
-  const dataStore = {
-    getSongs: () => [...songs],
-    getSong: (id: string) => songs.find((s) => s.id === id),
-    getSongsByArtist: (artist: string) =>
-      songs.filter((s) => s.artist.toLowerCase() === artist.toLowerCase()),
-    createSong: (input: Omit<Song, 'id'>) => {
-      const song: Song = { id: String(nextId++), ...input };
-      songs.push(song);
-      return song;
-    },
-    updateSong: (id: string, input: Partial<Omit<Song, 'id'>>) => {
-      const song = songs.find((s) => s.id === id);
-      if (!song) return null;
-      Object.assign(song, input);
-      return song;
-    },
-    deleteSong: (id: string) => {
-      const idx = songs.findIndex((s) => s.id === id);
-      if (idx === -1) return false;
-      songs.splice(idx, 1);
-      return true;
-    },
-  };
-
-  const schema = createSchema(dataStore);
+  const schema = createSchema(createDataStore());
   const app = express();
   app.use(express.json());
   app.post('/graphql', createGraphQLEndpoint(schema));

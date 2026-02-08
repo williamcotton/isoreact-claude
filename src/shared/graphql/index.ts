@@ -1,4 +1,4 @@
-export type { Song } from './types';
+export type { Song, DataStore } from './types';
 export {
   SONGS_QUERY,
   SONG_QUERY,
