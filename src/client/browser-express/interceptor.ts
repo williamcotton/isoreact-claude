@@ -1,6 +1,9 @@
 type NavigateHandler = (path: string, method: string, body?: any) => void;
 
-export function setupInterceptor(onNavigate: NavigateHandler) {
+export function setupInterceptor(onNavigate: NavigateHandler): () => void {
+  const controller = new AbortController();
+  const { signal } = controller;
+
   // Intercept link clicks
   document.addEventListener('click', (e) => {
     const event = e as MouseEvent;
@@ -39,7 +42,7 @@ export function setupInterceptor(onNavigate: NavigateHandler) {
     event.preventDefault();
     window.history.pushState(null, '', historyPath);
     onNavigate(routePath, 'GET');
-  });
+  }, { signal });
 
   // Intercept form submissions
   document.addEventListener('submit', (e) => {
@@ -83,10 +86,12 @@ export function setupInterceptor(onNavigate: NavigateHandler) {
     } else {
       onNavigate(`${actionUrl.pathname}${actionUrl.search}`, method, body);
     }
-  });
+  }, { signal });
 
   // Handle back/forward navigation
   window.addEventListener('popstate', () => {
     onNavigate(window.location.pathname + window.location.search, 'GET');
-  });
+  }, { signal });
+
+  return () => controller.abort();
 }

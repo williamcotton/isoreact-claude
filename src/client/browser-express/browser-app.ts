@@ -1,4 +1,4 @@
-import { hydrateRoot } from 'react-dom/client';
+import { hydrateRoot, createRoot as createReactRoot } from 'react-dom/client';
 import type { Root } from 'react-dom/client';
 import type { UniversalApp, UniversalResponse, GraphQLExecutor, RouteHandler } from '@shared/types';
 import { Router } from './router';
@@ -8,11 +8,13 @@ import { setupInterceptor } from './interceptor';
 
 export interface BrowserApp extends UniversalApp {
   start(): void;
+  destroy(): void;
 }
 
 export function createBrowserApp(graphql: GraphQLExecutor): BrowserApp {
   const router = new Router();
   let root: Root | null = null;
+  let cleanupInterceptor: (() => void) | null = null;
 
   async function handleNavigation(path: string, method: string, body?: any) {
     if (!root) {
@@ -65,7 +67,12 @@ export function createBrowserApp(graphql: GraphQLExecutor): BrowserApp {
       // For hydration, we render into the existing server HTML
       const res: UniversalResponse = {
         renderApp(element: any) {
-          root = hydrateRoot(container, element);
+          if (container.innerHTML) {
+            root = hydrateRoot(container, element);
+          } else {
+            root = createReactRoot(container);
+            root.render(element);
+          }
         },
         setStatus(_code: number) {
           // Client cannot change the status code of the initial HTTP response.
@@ -89,8 +96,14 @@ export function createBrowserApp(graphql: GraphQLExecutor): BrowserApp {
         }
 
         // After hydration, intercept future navigations.
-        setupInterceptor(handleNavigation);
+        cleanupInterceptor = setupInterceptor(handleNavigation);
       })();
+    },
+    destroy() {
+      cleanupInterceptor?.();
+      cleanupInterceptor = null;
+      root?.unmount();
+      root = null;
     },
   };
 }
