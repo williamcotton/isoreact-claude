@@ -272,9 +272,9 @@ The GraphQL schema is defined once in `src/shared/graphql/schema.ts` using `grap
 ┌─────────────────────────────────────────────────────────────┐
 │  req.graphql(query, variables)                              │
 │                                                             │
-│  Server:   graphql(schema, query, variables)   ← direct    │
-│  Browser:  fetch('/graphql', { body: ... })    ← HTTP POST │
-│  Hydrate:  window.__INITIAL_DATA__.graphql[key]← cache hit │
+│  Server:   graphql(schema, query, variables)   ← direct     │
+│  Browser:  fetch('/graphql', { body: ... })    ← HTTP POST  │
+│  Hydrate:  window.__INITIAL_DATA__.graphql[key]← cache hit  │
 └─────────────────────────────────────────────────────────────┘
 ```
 
