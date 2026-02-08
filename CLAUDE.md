@@ -26,7 +26,52 @@ In dev mode (`NODE_ENV === 'development'`), the server serves HTML pointing to `
 
 ## Testing
 
-**Do not run the server via agent.** After making changes, prompt the user to run `npm start` and test manually. The user can verify:
+```bash
+npm test              # single run
+npm run test:watch    # watch mode
+```
+
+Tests use Vitest with cheerio for HTML assertions. After making changes, run `npm test` to verify.
+
+### Test structure
+
+```
+tests/
+├── server.test.ts            # Integration: SSR song flow (supertest)
+├── client.test.tsx           # Integration: client hydration song flow (jsdom)
+├── drivers/                  # Shared test infrastructure
+│   ├── types.ts              # AppDriver interface
+│   └── test-executor.ts      # In-memory GraphQL executor for tests
+├── specs/
+│   └── song-flow.spec.ts     # Shared spec run by both server + client drivers
+└── unit/                     # Unit tests, mirroring src/ structure
+    ├── components/           # React component tests (jsdom)
+    │   ├── render-helper.tsx # createRoot + act → cheerio helper
+    │   ├── layout.test.tsx
+    │   ├── home.test.tsx
+    │   ├── song-list.test.tsx
+    │   ├── song-detail.test.tsx
+    │   └── create-song.test.tsx
+    ├── server/               # Server unit tests
+    │   ├── create-server-app.test.ts
+    │   ├── data-store.test.ts
+    │   └── graphql-endpoint.test.ts
+    ├── client/               # Client unit tests
+    │   └── router.test.ts
+    └── shared/               # Shared utility tests
+        └── url.test.ts
+```
+
+### Key patterns
+
+- **Universal integration tests**: `song-flow.spec.ts` defines a shared spec that runs identically against server (via supertest) and client (via jsdom + `createRoot`/`act`) through the `AppDriver` interface.
+- **Component unit tests**: Use `renderComponent()` from `render-helper.tsx` — renders with `createRoot` + `act`, returns a cheerio `$` for querying.
+- **Test executor**: `createTestExecutor()` provides an in-memory GraphQL executor with seed data, used by both integration drivers.
+- **Environment directives**: `// @vitest-environment jsdom` for browser tests, `// @vitest-environment node` for server tests.
+
+### Manual verification
+
+**Do not run the server via agent.** For end-to-end testing, prompt the user to run `npm start` and verify manually:
 
 1. **GraphQL endpoint**: `curl -X POST http://localhost:3000/graphql -H "Content-Type: application/json" -d '{"query":"{ songs { id title artist } }"}'`
 2. **SSR**: Visit `/songs` - page loads with data, view source shows `__INITIAL_DATA__`

@@ -416,6 +416,59 @@ The demo uses an in-memory array (`src/server/graphql/data-store.ts`). Replace `
 
 ---
 
+## Testing
+
+```bash
+npm test              # single run
+npm run test:watch    # watch mode
+```
+
+Tests use [Vitest](https://vitest.dev/) with cheerio for HTML assertions.
+
+### Test structure
+
+```
+tests/
+├── server.test.ts            # Integration: SSR song flow
+├── client.test.tsx           # Integration: client hydration song flow
+├── drivers/                  # Shared test infrastructure
+│   ├── types.ts              # AppDriver interface
+│   └── test-executor.ts      # In-memory GraphQL executor
+├── specs/
+│   └── song-flow.spec.ts     # Shared spec run by both server + client
+└── unit/
+    ├── components/           # React component tests (jsdom)
+    │   ├── render-helper.tsx # createRoot + act → cheerio helper
+    │   ├── layout.test.tsx
+    │   ├── home.test.tsx
+    │   ├── song-list.test.tsx
+    │   ├── song-detail.test.tsx
+    │   └── create-song.test.tsx
+    ├── server/               # Server-side unit tests
+    │   ├── create-server-app.test.ts
+    │   ├── data-store.test.ts
+    │   └── graphql-endpoint.test.ts
+    ├── client/               # Client-side unit tests
+    │   └── router.test.ts
+    └── shared/               # Shared utility tests
+        └── url.test.ts
+```
+
+### Universal integration tests
+
+The same `song-flow.spec.ts` runs against both environments via the `AppDriver` interface:
+
+- **Server driver** (`server.test.ts`): Uses supertest to make HTTP requests, cheerio to parse HTML responses
+- **Client driver** (`client.test.tsx`): Uses jsdom with `createRoot` + `act`, simulates navigation via `pushState`/`popstate`
+
+Both drivers share a `createTestExecutor()` that sets up an in-memory GraphQL executor with seed data.
+
+### Component unit tests
+
+Component tests in `tests/unit/components/` render individual React components in jsdom using a shared `renderComponent()` helper that returns a cheerio instance for querying the rendered HTML.
+
+---
+
 ## Scripts
 
 | Command | Description |
@@ -425,6 +478,8 @@ The demo uses an in-memory array (`src/server/graphql/data-store.ts`). Replace `
 | `npm run build:server` | Build server bundle only |
 | `npm start` | Start the production server |
 | `npm run dev` | Start dev server with HMR (React Fast Refresh) |
+| `npm test` | Run all tests once |
+| `npm run test:watch` | Run tests in watch mode |
 
 ---
 
@@ -460,5 +515,7 @@ CSS is inlined into a `<style>` tag in the SSR HTML to prevent a flash of unstyl
 **Build**: webpack, ts-loader, css-loader, mini-css-extract-plugin, typescript
 
 **Dev**: webpack-dev-server, react-refresh, @pmmmwh/react-refresh-webpack-plugin, react-refresh-typescript, concurrently, nodemon
+
+**Test**: vitest, jsdom, cheerio, supertest
 
 No meta-framework. No runtime abstraction layer you can't read. The entire architecture is in the `src/` directory.
