@@ -7,7 +7,7 @@
     "build:client": "webpack --config webpack.client.js",
     "build:server": "webpack --config webpack.server.js",
     "start": "node dist/server/index.js",
-    "dev": "npm run build && npm start"
+    "dev": "concurrently -k -n client,server,node -c blue,green,yellow \"webpack serve --mode development --config webpack.client.js\" \"webpack --watch --mode development --config webpack.server.js\" \"NODE_ENV=development nodemon --watch dist/server/index.js --delay 1 dist/server/index.js\""
   },
   "dependencies": {
     "compression": "^1.7.4",
@@ -18,18 +18,24 @@
     "react-dom": "^18.2.0"
   },
   "devDependencies": {
+    "@pmmmwh/react-refresh-webpack-plugin": "^0.6.2",
     "@types/compression": "^1.7.5",
     "@types/express": "^4.17.21",
     "@types/react": "^18.2.45",
     "@types/react-dom": "^18.2.18",
+    "concurrently": "^9.2.1",
     "css-loader": "^6.8.1",
     "mini-css-extract-plugin": "^2.7.6",
+    "nodemon": "^3.1.11",
+    "null-loader": "^4.0.1",
+    "react-refresh": "^0.18.0",
+    "react-refresh-typescript": "^2.0.11",
     "style-loader": "^3.3.3",
     "ts-loader": "^9.5.1",
     "typescript": "^5.3.3",
     "webpack": "^5.89.0",
     "webpack-cli": "^5.1.4",
-    "null-loader": "^4.0.1",
+    "webpack-dev-server": "^5.2.3",
     "webpack-node-externals": "^3.0.0"
   }
 }

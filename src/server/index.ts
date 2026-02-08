@@ -9,6 +9,7 @@ import { registerRoutes } from '@shared/universal-app';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const isDev = process.env.NODE_ENV === 'development';
 
 // Middleware
 app.use(compression());
@@ -17,15 +18,53 @@ app.use(express.urlencoded({ extended: true }));
 
 // Static files
 const clientDir = path.resolve(__dirname, '../client');
-app.use('/static', express.static(clientDir, { maxAge: '1y', immutable: true }));
+if (isDev) {
+  app.use('/static', express.static(clientDir, { maxAge: 0 }));
+} else {
+  app.use('/static', express.static(clientDir, { maxAge: '1y', immutable: true }));
+}
 
 interface BuildAssets {
   js: string[];
   css: string[];
+  inlineCss?: string;
+}
+
+// In dev mode, read the CSS source so we can inline it into the HTML
+// to prevent a flash of unstyled content (style-loader handles HMR after hydration).
+const devInlineCss = isDev
+  ? (() => {
+      try {
+        return fs.readFileSync(
+          path.resolve(__dirname, '../../src/components/styles.css'),
+          'utf-8'
+        );
+      } catch {
+        return '';
+      }
+    })()
+  : '';
+
+function getAssets(): BuildAssets {
+  if (isDev) {
+    return {
+      js: [
+        'http://localhost:3010/static/vendors.js',
+        'http://localhost:3010/static/main.js',
+      ],
+      css: [],
+      inlineCss: devInlineCss,
+    };
+  }
+
+  return loadProdAssets();
 }
 
 // Build asset manifest once at startup to avoid per-request disk reads.
-function loadAssets(): BuildAssets {
+let _prodAssets: BuildAssets | null = null;
+function loadProdAssets(): BuildAssets {
+  if (_prodAssets) return _prodAssets;
+
   let files: string[] = [];
   try {
     files = fs.readdirSync(clientDir);
@@ -64,11 +103,8 @@ function loadAssets(): BuildAssets {
     );
   }
 
-  return { js, css };
-}
-const buildAssets = loadAssets();
-function getAssets(): BuildAssets {
-  return buildAssets;
+  _prodAssets = { js, css };
+  return _prodAssets;
 }
 
 // GraphQL

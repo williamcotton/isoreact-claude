@@ -424,7 +424,32 @@ The demo uses an in-memory array (`src/server/graphql/data-store.ts`). Replace `
 | `npm run build:client` | Build browser bundle only |
 | `npm run build:server` | Build server bundle only |
 | `npm start` | Start the production server |
-| `npm run dev` | Build + start in one command |
+| `npm run dev` | Start dev server with HMR (React Fast Refresh) |
+
+---
+
+## Development
+
+```bash
+npm run dev
+```
+
+This starts three processes via `concurrently`:
+
+| Process | What it does |
+|---|---|
+| `webpack serve` | Serves client bundles on port 3010 with HMR + React Fast Refresh |
+| `webpack --watch` | Rebuilds the server bundle on source changes |
+| `nodemon` | Restarts the Express server when the server bundle changes |
+
+The Express server (port 3000) references scripts from `localhost:3010` in dev mode, so the browser gets HMR-capable bundles.
+
+**Workflow:**
+- Edit a React component → React Fast Refresh patches it in-place (state preserved, no page reload)
+- Edit server code → server bundle rebuilds → nodemon restarts → refresh browser manually
+- Edit shared code → both rebuild; client gets HMR, server restarts
+
+CSS is inlined into a `<style>` tag in the SSR HTML to prevent a flash of unstyled content. After hydration, `style-loader` takes over so style changes apply instantly via HMR.
 
 ---
 
@@ -433,5 +458,7 @@ The demo uses an in-memory array (`src/server/graphql/data-store.ts`). Replace `
 **Runtime**: express, react, react-dom, graphql, path-to-regexp, compression
 
 **Build**: webpack, ts-loader, css-loader, mini-css-extract-plugin, typescript
+
+**Dev**: webpack-dev-server, react-refresh, @pmmmwh/react-refresh-webpack-plugin, react-refresh-typescript, concurrently, nodemon
 
 No meta-framework. No runtime abstraction layer you can't read. The entire architecture is in the `src/` directory.

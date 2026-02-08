@@ -13,7 +13,7 @@ function serializeForInlineScript(value: unknown): string {
     .replace(/\u2029/g, '\\u2029');
 }
 
-export function createServerApp(expressApp: Express, graphqlExecutor: GraphQLExecutor, getAssets: () => { js: string[]; css: string[] }): UniversalApp {
+export function createServerApp(expressApp: Express, graphqlExecutor: GraphQLExecutor, getAssets: () => { js: string[]; css: string[]; inlineCss?: string }): UniversalApp {
   function createHandler(handler: (req: UniversalRequest, res: UniversalResponse) => Promise<void> | void) {
     return async (expressReq: Request, expressRes: Response) => {
       const graphqlCache: Record<string, any> = {};
@@ -37,7 +37,9 @@ export function createServerApp(expressApp: Express, graphqlExecutor: GraphQLExe
           const html = renderToString(element);
           const assets = getAssets();
           const initialData = serializeForInlineScript({ graphql: graphqlCache });
-          const cssLinks = assets.css.map((href) => `<link rel="stylesheet" href="${href}">`).join('\n    ');
+          const cssLinks = assets.inlineCss
+            ? `<style>${assets.inlineCss}</style>`
+            : assets.css.map((href) => `<link rel="stylesheet" href="${href}">`).join('\n    ');
           const scriptTags = assets.js.map((src) => `<script defer src="${src}"></script>`).join('\n    ');
 
           expressRes.send(`<!DOCTYPE html>

@@ -11,6 +11,19 @@ npm start
 # http://localhost:3000
 ```
 
+## Development (HMR)
+
+```bash
+npm run dev
+```
+
+Runs three processes via `concurrently`:
+- **Port 3010**: `webpack serve` — client HMR with React Fast Refresh (state-preserving)
+- **Server rebuild**: `webpack --watch` — rebuilds server bundle on changes
+- **Server restart**: `nodemon` — restarts Express when server bundle changes
+
+In dev mode (`NODE_ENV === 'development'`), the server serves HTML pointing to `http://localhost:3010/static/` for scripts. CSS is inlined into a `<style>` tag in the HTML to prevent FOUC; `style-loader` takes over after hydration for HMR.
+
 ## Testing
 
 **Do not run the server via agent.** After making changes, prompt the user to run `npm start` and test manually. The user can verify:
@@ -140,9 +153,22 @@ Single endpoint for all data operations:
 
 ## Build
 
-Webpack dual build:
+Webpack configs are function exports `(env, argv) =>` supporting both dev and prod modes.
+
+Production build:
 - `npm run build:server` → `dist/server/index.js` (CommonJS, node externals)
 - `npm run build:client` → `dist/client/*.js` (ESM, splitChunks for vendors)
+
+Dev mode differences (client):
+- `style-loader` instead of `MiniCssExtractPlugin` (CSS via JS for HMR)
+- React Fast Refresh via `react-refresh-typescript` transformer (no babel)
+- `eval-source-map` devtool, no content hashes
+- Absolute `publicPath` (`http://localhost:3010/static/`) so dynamic chunks load from dev server
+
+Dev mode differences (server):
+- `optimization.nodeEnv: false` — preserves runtime `process.env.NODE_ENV` check (webpack won't bake it in at compile time)
+- `NODE_ENV=development` set by the `dev` script so the server serves dev assets
+- CSS inlined as `<style>` tag in SSR HTML to prevent FOUC (style-loader takes over after hydration)
 
 ## Performance
 
