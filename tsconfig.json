@@ -19,6 +19,7 @@
       "@shared/*": ["shared/*"],
       "@server/*": ["server/*"],
       "@client/*": ["client/*"],
+      "@cli/*": ["cli/*"],
       "@components/*": ["components/*"]
     }
   },

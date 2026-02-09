@@ -8,6 +8,8 @@
     "build:server": "webpack --config webpack.server.js",
     "start": "node dist/server/index.js",
     "dev": "concurrently -k -n client,server,node -c blue,green,yellow \"webpack serve --mode development --config webpack.client.js\" \"webpack --watch --mode development --config webpack.server.js\" \"NODE_ENV=development nodemon --watch dist/server/index.js --delay 1 dist/server/index.js\"",
+    "build:cli": "webpack --config webpack.cli.js",
+    "cli": "node dist/cli/index.js",
     "test": "vitest run",
     "test:watch": "vitest"
   },
@@ -15,6 +17,7 @@
     "compression": "^1.7.4",
     "express": "^4.18.2",
     "graphql": "^16.8.1",
+    "ink": "^5.2.1",
     "path-to-regexp": "^6.2.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
@@ -29,6 +32,7 @@
     "cheerio": "^1.2.0",
     "concurrently": "^9.2.1",
     "css-loader": "^6.8.1",
+    "ink-testing-library": "^3.0.0",
     "jsdom": "^27.0.1",
     "mini-css-extract-plugin": "^2.7.6",
     "nodemon": "^3.1.11",
