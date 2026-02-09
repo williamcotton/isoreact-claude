@@ -5,7 +5,7 @@ module.exports = (env, argv) => {
   return {
     mode: 'production',
     target: 'node',
-    entry: './src/cli/index.ts',
+    entry: './src/cli/index.tsx',
     output: {
       path: path.resolve(__dirname, 'dist/cli'),
       filename: 'index.js',
