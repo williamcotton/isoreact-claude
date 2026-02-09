@@ -115,7 +115,7 @@ describe('InteractiveBrowser', () => {
 
     const output = lastFrame()!;
     expect(output).toContain('/songs');
-    expect(output).toContain('[200]');
+    expect(output).toContain('200');
   });
 
   it('shows status bar with selected link info', async () => {
@@ -125,8 +125,8 @@ describe('InteractiveBrowser', () => {
     await delay();
 
     const output = lastFrame()!;
-    expect(output).toContain('=>');
-    expect(output).toContain('q:quit');
+    expect(output).toContain('▸');
+    expect(output).toContain('q: quit');
   });
 
   it('navigates links with j/k keys', async () => {
@@ -225,7 +225,7 @@ describe('InteractiveBrowser', () => {
 
     const output = lastFrame()!;
     expect(output).toContain('Home');
-    expect(output).toContain('[200]');
+    expect(output).toContain('200');
   });
 
   it('handles page with no links', async () => {
@@ -236,7 +236,7 @@ describe('InteractiveBrowser', () => {
 
     const output = lastFrame()!;
     expect(output).toContain('Welcome');
-    expect(output).toContain('No links');
+    expect(output).toContain('No interactive items');
   });
 
   it('exits on q key', async () => {
@@ -292,7 +292,7 @@ describe('InteractiveBrowser', () => {
       expect(output).toContain('Create Song');
     });
 
-    it('shows Enter:edit hint when a field is selected', async () => {
+    it('shows Enter: edit hint when a field is selected', async () => {
       const app = createMockApp({ '/songs/new': { html: FORM_HTML } });
       const { lastFrame, stdin } = render(<InteractiveBrowser app={app} initialPath="/songs/new" />);
 
@@ -305,7 +305,7 @@ describe('InteractiveBrowser', () => {
       await delay();
 
       const output = lastFrame()!;
-      expect(output).toContain('Enter:edit');
+      expect(output).toContain('Enter: edit');
     });
 
     it('enters edit mode on Enter and shows editing status', async () => {
@@ -326,7 +326,7 @@ describe('InteractiveBrowser', () => {
 
       const output = lastFrame()!;
       expect(output).toContain('Editing: title');
-      expect(output).toContain('Enter:done');
+      expect(output).toContain('Enter: done');
     });
 
     it('typing in edit mode adds characters to field', async () => {
@@ -377,7 +377,7 @@ describe('InteractiveBrowser', () => {
       await delay();
 
       const output = lastFrame()!;
-      expect(output).toContain('Enter:edit');
+      expect(output).toContain('Enter: edit');
       expect(output).not.toContain('Editing:');
     });
 
@@ -419,7 +419,7 @@ describe('InteractiveBrowser', () => {
       }
 
       const output = lastFrame()!;
-      expect(output).toContain('Enter:submit');
+      expect(output).toContain('Enter: submit');
     });
 
     it('submitting form calls exec with POST and field values', async () => {

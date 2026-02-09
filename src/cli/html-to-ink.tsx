@@ -1,4 +1,3 @@
-import React from 'react';
 import type { ReactElement } from 'react';
 import { Text, Box, Newline } from 'ink';
 import * as cheerio from 'cheerio';
@@ -20,6 +19,7 @@ export interface HtmlToInkOptions {
   /** @deprecated Use selectedItemIndex instead */
   selectedLinkIndex?: number;
   fieldValues?: Record<string, string>;
+  columns?: number;
 }
 
 export function extractLinks(html: string): LinkInfo[] {
@@ -93,6 +93,11 @@ interface ConvertContext {
   selectedItemIndex: number;
   itemCounter: { value: number };
   fieldValues: Record<string, string>;
+  columns: number;
+}
+
+function rule(columns: number): ReactElement {
+  return <Text dimColor>{'─'.repeat(columns)}</Text>;
 }
 
 function convertChildren(
@@ -106,6 +111,14 @@ function convertChildren(
     if (node.type === 'text') {
       const text = (node as any).data as string;
       if (text) {
+        if (ctx.interactive) {
+          // Dim nav separators (pipes)
+          const trimmed = text.trim();
+          if (trimmed === '|') {
+            elements.push(<Text key={i} dimColor> │ </Text>);
+            return;
+          }
+        }
         elements.push(<Text key={i}>{text}</Text>);
       }
       return;
@@ -121,7 +134,10 @@ function convertChildren(
         if (ctx.interactive) {
           const children = convertChildren($(el).contents(), $, ctx);
           elements.push(
-            <Box key={i} flexDirection="row">{children}</Box>
+            <Box key={i} flexDirection="column">
+              <Box flexDirection="row">{children}</Box>
+              {rule(ctx.columns)}
+            </Box>
           );
         }
         // Non-interactive: skip nav
@@ -138,7 +154,7 @@ function convertChildren(
           const alertEl = $(el).find('[role="alert"]');
           if (alertEl.length) {
             formElements.push(
-              <Text key="error" color="red">{alertEl.text()}</Text>
+              <Text key="error" color="red">{'  ⚠ ' + alertEl.text()}</Text>
             );
           }
 
@@ -160,10 +176,11 @@ function convertChildren(
             const isSelected = fieldIndex === ctx.selectedItemIndex;
             const value = ctx.fieldValues[name] ?? '';
             const reqMark = required ? ' *' : '';
+            const prefix = isSelected ? '▸ ' : '  ';
 
             formElements.push(
               <Text key={`field-${name}`} inverse={isSelected}>
-                {`${label}${reqMark}: [${value || ''}]`}
+                {`${prefix}${label}${reqMark}: [${value || ''}]`}
               </Text>
             );
           });
@@ -172,10 +189,14 @@ function convertChildren(
           const buttonText = $(el).find('button[type="submit"], button').first().text() || 'Submit';
           const submitIndex = ctx.itemCounter.value++;
           const isSubmitSelected = submitIndex === ctx.selectedItemIndex;
+
           formElements.push(
-            <Text key="submit" inverse={isSubmitSelected} bold>
-              {`[ ${buttonText} ]`}
-            </Text>
+            <Box key="submit-row" flexDirection="row">
+              <Text color="green">{isSubmitSelected ? '▸ ' : '  '}</Text>
+              <Text inverse={isSubmitSelected} bold color={isSubmitSelected ? undefined : 'green'}>
+                {` ${buttonText} `}
+              </Text>
+            </Box>
           );
 
           elements.push(
@@ -199,24 +220,40 @@ function convertChildren(
         break;
 
       case 'h1':
-      case 'h2':
-      case 'h3':
         elements.push(
           <Box key={i} flexDirection="column">
-            <Text bold>{convertChildren($(el).contents(), $, ctx)}</Text>
-            <Newline />
+            <Text bold color="green">{convertChildren($(el).contents(), $, ctx)}</Text>
           </Box>
         );
         break;
 
-      case 'p':
+      case 'h2':
+      case 'h3':
         elements.push(
           <Box key={i} flexDirection="column">
-            <Text>{convertChildren($(el).contents(), $, ctx)}</Text>
-            <Newline />
+            <Text bold color="yellow">{convertChildren($(el).contents(), $, ctx)}</Text>
           </Box>
         );
         break;
+
+      case 'p': {
+        const pEl = $(el);
+        if (pEl.attr('role') === 'alert') {
+          elements.push(
+            <Box key={i} flexDirection="column">
+              <Text color="red">{convertChildren($(el).contents(), $, ctx)}</Text>
+            </Box>
+          );
+        } else {
+          elements.push(
+            <Box key={i} flexDirection="column">
+              <Text>{convertChildren($(el).contents(), $, ctx)}</Text>
+              <Newline />
+            </Box>
+          );
+        }
+        break;
+      }
 
       case 'ul':
         elements.push(
@@ -226,7 +263,7 @@ function convertChildren(
 
       case 'li':
         elements.push(
-          <Text key={i}>  - {convertChildren($(el).contents(), $, ctx)}</Text>
+          <Text key={i}>  <Text color="green">▸</Text> {convertChildren($(el).contents(), $, ctx)}</Text>
         );
         break;
 
@@ -238,7 +275,7 @@ function convertChildren(
 
       case 'dt':
         elements.push(
-          <Text key={i} bold>{convertChildren($(el).contents(), $, ctx)}: </Text>
+          <Text key={i} color="yellow" bold>{convertChildren($(el).contents(), $, ctx)}</Text>
         );
         break;
 
@@ -258,7 +295,7 @@ function convertChildren(
           const linkIndex = ctx.itemCounter.value++;
           const isSelected = linkIndex === ctx.selectedItemIndex;
           elements.push(
-            <Text key={i} inverse={isSelected} color={isSelected ? undefined : 'cyan'} underline={!isSelected}>
+            <Text key={i} inverse={isSelected} color={isSelected ? undefined : 'cyan'} bold={isSelected} underline={!isSelected}>
               {children}
             </Text>
           );
@@ -296,6 +333,7 @@ export function htmlToInk(html: string, options?: HtmlToInkOptions): ReactElemen
     selectedItemIndex: selectedIndex,
     itemCounter: { value: 0 },
     fieldValues: options?.fieldValues ?? {},
+    columns: options?.columns ?? 60,
   };
   const children = convertChildren($.root().contents(), $, ctx);
   return <Box flexDirection="column">{children}</Box>;

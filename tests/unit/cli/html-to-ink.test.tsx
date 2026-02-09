@@ -15,8 +15,8 @@ describe('htmlToInk', () => {
     const element = htmlToInk('<ul><li>First</li><li>Second</li></ul>');
     const { lastFrame } = render(element);
     const output = lastFrame()!;
-    expect(output).toContain('- First');
-    expect(output).toContain('- Second');
+    expect(output).toContain('▸ First');
+    expect(output).toContain('▸ Second');
   });
 
   it('converts definition lists', () => {
@@ -76,7 +76,7 @@ describe('htmlToInk', () => {
       expect(output).toContain('Content');
     });
 
-    it('renders nav horizontally', () => {
+    it('renders nav horizontally with separator line below', () => {
       const html = '<nav><a href="/">Home</a> | <a href="/songs">Songs</a> | <a href="/songs/new">Add Song</a></nav>';
       const element = htmlToInk(html, { interactive: true, selectedItemIndex: -1 });
       const { lastFrame } = render(element);
@@ -86,6 +86,8 @@ describe('htmlToInk', () => {
       const navLine = lines.find(l => l.includes('Home'));
       expect(navLine).toContain('Songs');
       expect(navLine).toContain('Add Song');
+      // Separator line below nav
+      expect(output).toContain('─');
     });
 
     it('renders all links in interactive mode', () => {

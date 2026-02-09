@@ -126,6 +126,7 @@ export function InteractiveBrowser({ app, initialPath }: InteractiveBrowserProps
   // ink's log-update line counter gets stale when output exceeds
   // terminal height, leaving ghost content on navigation.
   const terminalHeight = stdout.rows || 24;
+  const columns = stdout.columns || 80;
 
   if (page.loading) {
     return (
@@ -139,28 +140,36 @@ export function InteractiveBrowser({ app, initialPath }: InteractiveBrowserProps
     interactive: true,
     selectedItemIndex: page.selectedIndex,
     fieldValues,
+    columns,
   });
   const selectedItem = page.items[page.selectedIndex];
+  const ruler = '─'.repeat(columns);
 
   let statusText: string;
   if (!selectedItem) {
-    statusText = 'No links';
+    statusText = 'No interactive items';
   } else if (mode === 'edit' && selectedItem.type === 'field') {
-    statusText = `Editing: ${selectedItem.name}  (Enter:done  Esc:cancel)`;
+    statusText = `  Editing: ${selectedItem.name}  │  Enter: done  Esc: cancel`;
   } else if (selectedItem.type === 'link') {
-    statusText = `=> ${selectedItem.href}  [${page.selectedIndex + 1}/${page.items.length}]  j/k:navigate  Enter:follow  q:quit`;
+    statusText = `  ▸ ${selectedItem.href}  │  ${page.selectedIndex + 1}/${page.items.length}  │  ↑↓: navigate  Enter: follow  q: quit`;
   } else if (selectedItem.type === 'field') {
-    statusText = `[${page.selectedIndex + 1}/${page.items.length}]  Enter:edit  j/k:navigate  q:quit`;
+    statusText = `  ${page.selectedIndex + 1}/${page.items.length}  │  Enter: edit  ↑↓: navigate  q: quit`;
   } else if (selectedItem.type === 'submit') {
-    statusText = `[${page.selectedIndex + 1}/${page.items.length}]  Enter:submit  j/k:navigate  q:quit`;
+    statusText = `  ${page.selectedIndex + 1}/${page.items.length}  │  Enter: submit  ↑↓: navigate  q: quit`;
   } else {
-    statusText = `[${page.selectedIndex + 1}/${page.items.length}]  j/k:navigate  q:quit`;
+    statusText = `  ${page.selectedIndex + 1}/${page.items.length}  │  ↑↓: navigate  q: quit`;
   }
+
+  const statusColor = page.statusCode >= 400 ? 'red' : page.statusCode >= 300 ? 'yellow' : 'green';
 
   return (
     <Box flexDirection="column" minHeight={terminalHeight}>
-      <Text dimColor>{page.url} [{page.statusCode}]</Text>
+      <Box flexDirection="row">
+        <Text color={statusColor} bold>{page.statusCode} </Text>
+        <Text bold>{page.url}</Text>
+      </Box>
       {content}
+      <Text dimColor>{ruler}</Text>
       <Text dimColor>{statusText}</Text>
     </Box>
   );
