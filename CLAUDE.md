@@ -1,6 +1,6 @@
 # IsoReact
 
-Universal React application where the same route definitions run on both server (Express.js) and client (browser-express shim).
+Universal React application where the same route definitions run on server (Express.js), client (browser-express shim), and CLI (Ink terminal UI).
 
 ## Quick Start
 
@@ -24,6 +24,19 @@ Runs three processes via `concurrently`:
 
 In dev mode (`NODE_ENV === 'development'`), the server serves HTML pointing to `http://localhost:3010/static/` for scripts. CSS is inlined into a `<style>` tag in the HTML to prevent FOUC; `style-loader` takes over after hydration for HMR.
 
+## CLI
+
+```bash
+npm run build:cli
+npm run cli -- /songs             # one-shot: render page and exit
+npm run cli -- -i /songs          # interactive: keyboard-driven terminal browser
+npm run cli -- /songs -d "title=Test&artist=Me"  # POST with body
+```
+
+The CLI is a third runtime that reuses the same route definitions. It uses [Ink](https://github.com/vadimdemedes/ink) to render HTML output as styled terminal UI. Two modes:
+- **One-shot**: Executes a route, converts HTML to Ink components, prints, and exits. Non-zero exit code on 4xx/5xx.
+- **Interactive**: Full terminal browser with keyboard navigation (j/k/arrows), link following (Enter), form field editing, and form submission.
+
 ## Testing
 
 ```bash
@@ -39,11 +52,12 @@ Tests use Vitest with cheerio for HTML assertions. After making changes, run `np
 tests/
 ├── server.test.ts            # Integration: SSR song flow (supertest)
 ├── client.test.tsx           # Integration: client hydration song flow (jsdom)
+├── cli.test.ts               # Integration: CLI song flow (cheerio)
 ├── drivers/                  # Shared test infrastructure
 │   ├── types.ts              # AppDriver interface
 │   └── test-executor.ts      # In-memory GraphQL executor for tests
 ├── specs/
-│   └── song-flow.spec.ts     # Shared spec run by both server + client drivers
+│   └── song-flow.spec.ts     # Shared spec run by server + client + CLI drivers
 └── unit/                     # Unit tests, mirroring src/ structure
     ├── components/           # React component tests (jsdom)
     │   ├── render-helper.tsx # createRoot + act → cheerio helper
@@ -58,13 +72,18 @@ tests/
     │   └── graphql-endpoint.test.ts
     ├── client/               # Client unit tests
     │   └── router.test.ts
+    ├── cli/                  # CLI unit tests
+    │   ├── cli-app.test.ts
+    │   ├── cli-response.test.ts
+    │   ├── html-to-ink.test.tsx
+    │   └── interactive-browser.test.tsx
     └── shared/               # Shared utility tests
         └── url.test.ts
 ```
 
 ### Key patterns
 
-- **Universal integration tests**: `song-flow.spec.ts` defines a shared spec that runs identically against server (via supertest) and client (via jsdom + `createRoot`/`act`) through the `AppDriver` interface.
+- **Universal integration tests**: `song-flow.spec.ts` defines a shared spec that runs identically against server (via supertest), client (via jsdom + `createRoot`/`act`), and CLI (via `createCliApp` + cheerio) through the `AppDriver` interface.
 - **Component unit tests**: Use `renderComponent()` from `render-helper.tsx` — renders with `createRoot` + `act`, returns a cheerio `$` for querying.
 - **Test executor**: `createTestExecutor()` provides an in-memory GraphQL executor with seed data, used by both integration drivers.
 - **Environment directives**: `// @vitest-environment jsdom` for browser tests, `// @vitest-environment node` for server tests.
@@ -96,17 +115,19 @@ app.get('/songs', async (req, res) => {
 This code runs identically on:
 - **Server**: Express.js with `renderToString()` for SSR
 - **Client**: Custom browser-express shim with `createRoot().render()`
+- **CLI**: Ink terminal UI with `renderToStaticMarkup()` → HTML-to-Ink conversion
 
 ### Directory Structure
 
 ```
 src/
-├── shared/           # Runs on both server and client
+├── shared/           # Runs on server, client, and CLI
 │   ├── types/        # UniversalApp, UniversalRequest, UniversalResponse, GraphQLExecutor
 │   ├── graphql/      # Schema definition and operations
 │   │   ├── schema.ts      # GraphQL schema using graphql-js
 │   │   ├── operations.ts  # Pre-defined query/mutation strings
 │   │   └── index.ts
+│   ├── router.ts     # Shared path-to-regexp router (used by client + CLI)
 │   ├── utils/        # URL parsing utilities
 │   └── universal-app.tsx  # Route definitions
 ├── server/
@@ -123,13 +144,21 @@ src/
 │   ├── index.tsx     # Browser entry point
 │   ├── browser-express/  # Express-like API for browser
 │   │   ├── browser-app.ts      # Main UniversalApp implementation
-│   │   ├── router.ts           # path-to-regexp route matching
+│   │   ├── router.ts           # Re-exports shared Router
 │   │   ├── browser-request.ts  # Creates UniversalRequest from browser context
 │   │   ├── browser-response.ts # renderApp() uses React DOM
 │   │   └── interceptor.ts      # Intercepts clicks, forms, popstate
 │   └── graphql/      # Client GraphQL implementation
 │       ├── executor.ts    # HTTP fetch with SSR cache
 │       └── index.ts
+├── cli/              # CLI terminal runtime
+│   ├── index.tsx              # Entry point: arg parsing, one-shot or interactive mode
+│   ├── cli-app.ts             # UniversalApp implementation for CLI
+│   ├── cli-request.ts         # Creates UniversalRequest from CLI args
+│   ├── cli-response.ts        # renderApp() via renderToStaticMarkup
+│   ├── html-to-ink.tsx         # Converts HTML to Ink React components
+│   ├── InteractiveBrowser.tsx  # Interactive terminal browser (Ink component)
+│   └── ink.d.ts               # Type declarations for ink
 └── components/       # React components
     ├── Layout.tsx
     └── pages/
@@ -140,6 +169,7 @@ src/
 1. **SSR**: Server executes GraphQL directly → renders React → injects `window.__INITIAL_DATA__.graphql` → sends HTML
 2. **Hydration**: Client reads cached GraphQL results from `__INITIAL_DATA__` → hydrates without re-fetching
 3. **Client Navigation**: Interceptor catches clicks → router matches → handler fetches via `POST /graphql` → React renders
+4. **CLI**: Executes GraphQL directly → renders React to static HTML → converts HTML to Ink terminal components
 
 ### GraphQL Pattern
 
@@ -149,6 +179,7 @@ Same `req.graphql(query, variables)` interface, different execution:
 |-------------|------------------|
 | Server | Direct `graphql()` call from graphql-js (no HTTP) |
 | Browser | HTTP POST to `/graphql` endpoint |
+| CLI | Direct `graphql()` call from graphql-js (no HTTP) |
 
 The `GraphQLExecutor` type is defined in `src/shared/types/graphql.types.ts`.
 
@@ -160,6 +191,15 @@ Custom implementation in `src/client/browser-express/`:
 - **Router**: Uses `path-to-regexp` for Express-style route matching
 - **Interceptor**: Captures link clicks and form submissions, uses `history.pushState()`
 - **Response**: `renderApp()` calls React's `createRoot().render()`
+
+### CLI Runtime
+
+Third `UniversalApp` implementation in `src/cli/`:
+- **cli-app.ts**: Registers routes via shared `Router`, executes them with `renderToStaticMarkup`, follows redirects automatically (max 10)
+- **html-to-ink.tsx**: Converts HTML output to Ink React components (headings, lists, definition lists, links, forms). Two rendering modes: non-interactive (links show `text (href)`) and interactive (selectable items with highlight)
+- **InteractiveBrowser.tsx**: Full-screen Ink component with browse/edit modes, j/k/arrow navigation, Enter to follow links or edit fields, form submission, status bar
+- Uses shared `Router` from `src/shared/router.ts` (extracted from browser-express, now shared with client)
+- Webpack config: `webpack.cli.js` — bundles all dependencies (including ESM-only ink), uses `null-loader` for CSS
 
 ### Code Splitting
 
@@ -203,6 +243,7 @@ Webpack configs are function exports `(env, argv) =>` supporting both dev and pr
 Production build:
 - `npm run build:server` → `dist/server/index.js` (CommonJS, node externals)
 - `npm run build:client` → `dist/client/*.js` (ESM, splitChunks for vendors)
+- `npm run build:cli` → `dist/cli/index.js` (CommonJS, all deps bundled)
 
 Dev mode differences (client):
 - `style-loader` instead of `MiniCssExtractPlugin` (CSS via JS for HMR)

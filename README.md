@@ -1,8 +1,8 @@
 # IsoReact
 
-A micro-framework for building universal React applications where routes, data fetching, and rendering logic are written once and run identically on both the server and the browser.
+A micro-framework for building universal React applications where routes, data fetching, and rendering logic are written once and run identically on the server, in the browser, and in the terminal.
 
-IsoReact replaces the typical "pick a meta-framework" decision with a small, transparent architecture you can read end-to-end in an afternoon. There's no magic — just a shared interface (`UniversalApp`) that Express implements on the server and a lightweight shim implements in the browser.
+IsoReact replaces the typical "pick a meta-framework" decision with a small, transparent architecture you can read end-to-end in an afternoon. There's no magic — just a shared interface (`UniversalApp`) that Express implements on the server, a lightweight shim implements in the browser, and an Ink-based runtime implements in the terminal.
 
 ```
 npm install && npm run build && npm start
@@ -15,7 +15,7 @@ npm install && npm run build && npm start
 
 ### The Core Idea
 
-You define routes using an Express-like API. The same code runs on the server (for SSR) and in the browser (for client-side navigation):
+You define routes using an Express-like API. The same code runs on the server (for SSR), in the browser (for client-side navigation), and in the terminal (for CLI access):
 
 ```tsx
 // src/shared/universal-app.tsx
@@ -33,6 +33,8 @@ export function registerRoutes(app: UniversalApp) {
 On the **server**, `req.graphql()` executes the query directly against the GraphQL schema (no HTTP round-trip), and `res.renderApp()` calls `renderToString()` and sends full HTML.
 
 In the **browser**, `req.graphql()` makes a `fetch()` to `/graphql`, and `res.renderApp()` calls React's `root.render()` to update the DOM.
+
+In the **CLI**, `req.graphql()` executes the query directly (like the server), and `res.renderApp()` calls `renderToStaticMarkup()` then converts the HTML to styled Ink terminal components.
 
 The route handler doesn't know or care which environment it's in.
 
@@ -64,14 +66,14 @@ interface UniversalResponse {
 type RouteHandler = (req: UniversalRequest, res: UniversalResponse) => Promise<void> | void;
 ```
 
-Two implementations of this interface exist:
+Three implementations of this interface exist:
 
-| | Server | Browser |
-|---|---|---|
-| **App** | Wraps Express (`create-server-app.ts`) | Custom shim (`browser-app.ts`) |
-| **Request** | Built from Express `req` | Built from `window.location` |
-| **Response** | `renderToString()` → HTML | `root.render()` → DOM |
-| **GraphQL** | Direct `graphql()` execution | `fetch('/graphql')` |
+| | Server | Browser | CLI |
+|---|---|---|---|
+| **App** | Wraps Express (`create-server-app.ts`) | Custom shim (`browser-app.ts`) | `cli-app.ts` |
+| **Request** | Built from Express `req` | Built from `window.location` | Built from CLI args |
+| **Response** | `renderToString()` → HTML | `root.render()` → DOM | `renderToStaticMarkup()` → Ink |
+| **GraphQL** | Direct `graphql()` execution | `fetch('/graphql')` | Direct `graphql()` execution |
 
 ---
 
@@ -79,26 +81,36 @@ Two implementations of this interface exist:
 
 ```
 src/
-├── shared/                    # Runs on BOTH server and client
+├── shared/                    # Runs on ALL runtimes (server, client, CLI)
 │   ├── types/                 # UniversalApp, UniversalRequest, UniversalResponse
 │   ├── graphql/               # Schema, query strings, Song type
+│   ├── router.ts              # Shared path-to-regexp router (used by client + CLI)
 │   ├── utils/                 # URL parsing
 │   └── universal-app.tsx      # Route definitions (the important file)
 │
-├── server/                    # Node.js only
+├── server/                    # Node.js HTTP server
 │   ├── index.ts               # Express entry point
 │   ├── create-server-app.ts   # Adapts Express → UniversalApp
 │   └── graphql/               # In-memory data store, direct executor, HTTP endpoint
 │
-├── client/                    # Browser only
+├── client/                    # Browser
 │   ├── index.tsx              # Entry point: create app, register routes, hydrate
 │   ├── browser-express/       # Express-like API for the browser
 │   │   ├── browser-app.ts     # UniversalApp implementation
-│   │   ├── router.ts          # path-to-regexp route matching
+│   │   ├── router.ts          # Re-exports shared Router
 │   │   ├── browser-request.ts # Builds UniversalRequest from browser state
 │   │   ├── browser-response.ts# renderApp() via React DOM
 │   │   └── interceptor.ts     # Captures link clicks, form submits, popstate
 │   └── graphql/               # fetch()-based executor with SSR cache
+│
+├── cli/                       # Terminal (Ink)
+│   ├── index.tsx              # Entry point: arg parsing, one-shot or interactive mode
+│   ├── cli-app.ts             # UniversalApp implementation for CLI
+│   ├── cli-request.ts         # Builds UniversalRequest from CLI args
+│   ├── cli-response.ts        # renderApp() via renderToStaticMarkup
+│   ├── html-to-ink.tsx        # Converts HTML → Ink React components
+│   ├── InteractiveBrowser.tsx # Interactive terminal browser (keyboard-driven)
+│   └── ink.d.ts               # Type declarations for ink
 │
 └── components/                # React components (shared)
     ├── Layout.tsx
@@ -171,6 +183,38 @@ Handler validates → req.graphql(CREATE_SONG_MUTATION)
 res.redirect('/songs') → pushState + re-navigate
 ```
 
+### 5. CLI (one-shot)
+
+```
+User runs: cli /songs
+        ↓
+Router matches route → runs same handler from universal-app.tsx
+        ↓
+req.graphql(SONGS_QUERY) → direct graphql() call (no HTTP)
+        ↓
+res.renderApp(<SongList />) → renderToStaticMarkup() → HTML string
+        ↓
+html-to-ink converts HTML → Ink components (styled terminal output)
+        ↓
+Ink renders to terminal and exits
+```
+
+### 6. CLI (interactive browser)
+
+```
+User runs: cli -i /songs
+        ↓
+InteractiveBrowser renders page via html-to-ink
+        ↓
+User navigates with j/k/arrows, follows links with Enter
+        ↓
+Link follow → re-executes route handler → re-renders terminal
+        ↓
+Form fields: Enter to edit, type to fill, Enter to confirm
+        ↓
+Form submit → executes POST handler → follows redirect → re-renders
+```
+
 ---
 
 ## Writing Routes
@@ -240,7 +284,7 @@ app.get('/old-path', async (_req, res) => {
 });
 ```
 
-On the server, this sends an HTTP 302. In the browser, it calls `history.pushState()` and re-navigates.
+On the server, this sends an HTTP 302. In the browser, it calls `history.pushState()` and re-navigates. In the CLI, redirects are followed automatically (up to 10 hops).
 
 ---
 
@@ -264,18 +308,19 @@ The initial HTML only includes `vendors.*.js` and `main.*.js`. Page-specific cod
 
 ### Shared schema
 
-The GraphQL schema is defined once in `src/shared/graphql/schema.ts` using `graphql-js` and is shared between server and client builds. Query and mutation strings live in `src/shared/graphql/operations.ts`.
+The GraphQL schema is defined once in `src/shared/graphql/schema.ts` using `graphql-js` and is shared across all builds. Query and mutation strings live in `src/shared/graphql/operations.ts`.
 
 ### How execution differs by environment
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  req.graphql(query, variables)                              │
-│                                                             │
-│  Server:   graphql(schema, query, variables)   ← direct     │
-│  Browser:  fetch('/graphql', { body: ... })    ← HTTP POST  │
-│  Hydrate:  window.__INITIAL_DATA__.graphql[key]← cache hit  │
-└─────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│  req.graphql(query, variables)                               │
+│                                                              │
+│  Server:   graphql(schema, query, variables)   ← direct      │
+│  Browser:  fetch('/graphql', { body: ... })    ← HTTP POST   │
+│  Hydrate:  window.__INITIAL_DATA__.graphql[key]← cache hit   │
+│  CLI:      graphql(schema, query, variables)   ← direct      │
+└──────────────────────────────────────────────────────────────┘
 ```
 
 The server executor (`src/server/graphql/executor.ts`) calls `graphql()` directly against the in-process schema — no network involved.
@@ -327,6 +372,44 @@ Constructs a `UniversalRequest` from the current `window.location`, parsed query
 
 ---
 
+## The CLI Runtime
+
+The `src/cli/` directory implements a terminal-based runtime using [Ink](https://github.com/vadimdemedes/ink) (React for the terminal). It supports two modes:
+
+### One-shot mode
+
+```bash
+npm run cli -- /songs                          # GET a page
+npm run cli -- /songs/1                        # GET with params
+npm run cli -- /songs -d "title=Test&artist=Me" # POST with body
+```
+
+Executes the route handler, converts the React output to styled terminal components via `html-to-ink.tsx`, prints the result, and exits. Returns a non-zero exit code on 4xx/5xx status codes.
+
+### Interactive browser mode
+
+```bash
+npm run cli -- -i /songs
+```
+
+Launches a full-screen terminal browser powered by Ink:
+
+- **Navigation**: `j`/`k` or arrow keys to move between links, form fields, and submit buttons
+- **Follow links**: `Enter` on a selected link navigates to that page
+- **Form editing**: `Enter` on a field enters edit mode; type to fill; `Enter`/`Escape` to finish
+- **Form submission**: `Enter` on the submit button sends the form as a POST request
+- **Status bar**: Shows current URL, HTTP status code, selected item info, and keyboard hints
+- **Quit**: `q` to exit
+
+### How it works
+
+1. `cli-app.ts` implements `UniversalApp` using the shared `Router` from `src/shared/router.ts`
+2. `cli-response.ts` renders React elements to HTML via `renderToStaticMarkup()`
+3. `html-to-ink.tsx` parses the HTML with cheerio and converts it to Ink components (headings → bold colored text, lists → bullet points, links → underlined/selectable, forms → editable fields)
+4. `InteractiveBrowser.tsx` wraps this in a stateful Ink component with keyboard input handling and page navigation
+
+---
+
 ## Progressive Enhancement
 
 The app works without JavaScript:
@@ -341,18 +424,20 @@ You can verify this with `curl` or a text browser like Lynx. The server renders 
 
 ## Build
 
-Webpack produces two bundles:
+Webpack produces three bundles:
 
 ```bash
 npm run build:client   # → dist/client/*.js, *.css (browser, ESM, code-split)
 npm run build:server   # → dist/server/index.js  (Node.js, CommonJS, externals)
+npm run build:cli      # → dist/cli/index.js     (Node.js, all deps bundled)
 ```
 
-The client build uses content hashes for cache-busting and splits vendor dependencies (React, graphql-js) into a separate chunk. The server build excludes `node_modules` via `webpack-node-externals`.
+The client build uses content hashes for cache-busting and splits vendor dependencies (React, graphql-js) into a separate chunk. The server build excludes `node_modules` via `webpack-node-externals`. The CLI build bundles all dependencies (including ESM-only packages like ink) and uses `null-loader` for CSS imports.
 
 ```bash
-npm run build          # runs both
+npm run build          # runs client + server
 npm start              # node dist/server/index.js
+npm run cli -- /songs  # node dist/cli/index.js /songs
 ```
 
 ---
@@ -377,7 +462,7 @@ app.get('/artists/:name', async (req, res) => {
 });
 ```
 
-That's it. The route now works with SSR, hydration, client navigation, and code splitting.
+That's it. The route now works with SSR, hydration, client navigation, code splitting, and the CLI — all from the same handler.
 
 ### Swapping the data layer
 
@@ -390,7 +475,7 @@ type GraphQLExecutor = <T = any>(
 ) => Promise<GraphQLResult<T>>;
 ```
 
-You could replace GraphQL with REST, tRPC, or direct database calls — as long as both the server and client executors implement the same interface. The `req.graphql` name is a convention; rename it to `req.fetch` or `req.query` and update the types.
+You could replace GraphQL with REST, tRPC, or direct database calls — as long as all three executors (server, client, CLI) implement the same interface. The `req.graphql` name is a convention; rename it to `req.fetch` or `req.query` and update the types.
 
 ### Adding middleware-like behavior
 
@@ -431,11 +516,12 @@ Tests use [Vitest](https://vitest.dev/) with cheerio for HTML assertions.
 tests/
 ├── server.test.ts            # Integration: SSR song flow
 ├── client.test.tsx           # Integration: client hydration song flow
+├── cli.test.ts               # Integration: CLI song flow
 ├── drivers/                  # Shared test infrastructure
 │   ├── types.ts              # AppDriver interface
 │   └── test-executor.ts      # In-memory GraphQL executor
 ├── specs/
-│   └── song-flow.spec.ts     # Shared spec run by both server + client
+│   └── song-flow.spec.ts     # Shared spec run by server + client + CLI
 └── unit/
     ├── components/           # React component tests (jsdom)
     │   ├── render-helper.tsx # createRoot + act → cheerio helper
@@ -450,18 +536,24 @@ tests/
     │   └── graphql-endpoint.test.ts
     ├── client/               # Client-side unit tests
     │   └── router.test.ts
+    ├── cli/                  # CLI unit tests
+    │   ├── cli-app.test.ts
+    │   ├── cli-response.test.ts
+    │   ├── html-to-ink.test.tsx
+    │   └── interactive-browser.test.tsx
     └── shared/               # Shared utility tests
         └── url.test.ts
 ```
 
 ### Universal integration tests
 
-The same `song-flow.spec.ts` runs against both environments via the `AppDriver` interface:
+The same `song-flow.spec.ts` runs against all three environments via the `AppDriver` interface:
 
 - **Server driver** (`server.test.ts`): Uses supertest to make HTTP requests, cheerio to parse HTML responses
 - **Client driver** (`client.test.tsx`): Uses jsdom with `createRoot` + `act`, simulates navigation via `pushState`/`popstate`
+- **CLI driver** (`cli.test.ts`): Uses `createCliApp` to execute routes, cheerio to parse the HTML output
 
-Both drivers share a `createTestExecutor()` that sets up an in-memory GraphQL executor with seed data.
+All three drivers share a `createTestExecutor()` that sets up an in-memory GraphQL executor with seed data.
 
 ### Component unit tests
 
@@ -476,7 +568,10 @@ Component tests in `tests/unit/components/` render individual React components i
 | `npm run build` | Build client and server bundles |
 | `npm run build:client` | Build browser bundle only |
 | `npm run build:server` | Build server bundle only |
+| `npm run build:cli` | Build CLI bundle |
 | `npm start` | Start the production server |
+| `npm run cli -- <path>` | Run CLI in one-shot mode |
+| `npm run cli -- -i <path>` | Run CLI in interactive browser mode |
 | `npm run dev` | Start dev server with HMR (React Fast Refresh) |
 | `npm test` | Run all tests once |
 | `npm run test:watch` | Run tests in watch mode |
@@ -510,12 +605,12 @@ CSS is inlined into a `<style>` tag in the SSR HTML to prevent a flash of unstyl
 
 ## Dependencies
 
-**Runtime**: express, react, react-dom, graphql, path-to-regexp, compression
+**Runtime**: express, react, react-dom, graphql, path-to-regexp, compression, ink
 
 **Build**: webpack, ts-loader, css-loader, mini-css-extract-plugin, typescript
 
 **Dev**: webpack-dev-server, react-refresh, @pmmmwh/react-refresh-webpack-plugin, react-refresh-typescript, concurrently, nodemon
 
-**Test**: vitest, jsdom, cheerio, supertest
+**Test**: vitest, jsdom, cheerio, supertest, ink-testing-library
 
 No meta-framework. No runtime abstraction layer you can't read. The entire architecture is in the `src/` directory.
