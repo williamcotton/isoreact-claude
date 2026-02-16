@@ -167,7 +167,7 @@ function convertChildren(
             if (id) {
               const labelEl = $(el).find(`label[for="${id}"]`);
               if (labelEl.length) {
-                label = labelEl.text().trim();
+                label = labelEl.text().replace(/\s*\*\s*$/, '').trim();
               }
             }
             if (!label) label = name;
@@ -177,10 +177,11 @@ function convertChildren(
             const value = ctx.fieldValues[name] ?? '';
             const reqMark = required ? ' *' : '';
             const prefix = isSelected ? '▸ ' : '  ';
+            const fieldDisplay = value || '___________';
 
             formElements.push(
               <Text key={`field-${name}`} inverse={isSelected}>
-                {`${prefix}${label}${reqMark}: [${value || ''}]`}
+                {`${prefix}${label}${reqMark}: ${fieldDisplay}`}
               </Text>
             );
           });

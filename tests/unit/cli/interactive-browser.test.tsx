@@ -352,7 +352,7 @@ describe('InteractiveBrowser', () => {
       await delay();
 
       const output = lastFrame()!;
-      expect(output).toContain('[Hi]');
+      expect(output).toContain('Title *: Hi');
     });
 
     it('Enter in edit mode returns to browse mode', async () => {
