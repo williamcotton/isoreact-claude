@@ -19,6 +19,7 @@ module.exports = (env, argv) => {
       alias: {
         '@shared': path.resolve(__dirname, 'src/shared'),
         '@server': path.resolve(__dirname, 'src/server'),
+        '@builder': path.resolve(__dirname, 'src/builder'),
         '@components': path.resolve(__dirname, 'src/components'),
       },
     },

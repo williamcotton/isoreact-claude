@@ -8,6 +8,7 @@ export default defineConfig({
       '@server': path.resolve(__dirname, 'src/server'),
       '@client': path.resolve(__dirname, 'src/client'),
       '@cli': path.resolve(__dirname, 'src/cli'),
+      '@builder': path.resolve(__dirname, 'src/builder'),
       '@components': path.resolve(__dirname, 'src/components'),
     },
   },

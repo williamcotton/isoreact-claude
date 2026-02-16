@@ -3,8 +3,10 @@ import compression from 'compression';
 import path from 'path';
 import fs from 'fs';
 import { createSchema } from '@shared/graphql/schema';
-import { dataStore, createServerExecutor, createGraphQLEndpoint } from './graphql';
+import type { DataStore } from '@shared/graphql';
+import { createDataStore, createServerExecutor, createGraphQLEndpoint } from './graphql';
 import { createServerApp } from './create-server-app';
+import { createBuilderApp } from '@builder/builder-app';
 import { registerRoutes } from '@shared/universal-app';
 
 const app = express();
@@ -107,17 +109,72 @@ function loadProdAssets(): BuildAssets {
   return _prodAssets;
 }
 
-// GraphQL
-const schema = createSchema(dataStore);
+// 1. Cache storage
+const htmlCache = new Map<string, string>();
+
+// 2. Notifying data store wrapper
+function withMutationNotify(store: DataStore, onChange: (paths: string[]) => void): DataStore {
+  return {
+    ...store,
+    createSong(input) {
+      const song = store.createSong(input);
+      onChange(['/songs', `/songs/${song.id}`]);
+      return song;
+    },
+    updateSong(id, input) {
+      const song = store.updateSong(id, input);
+      if (song) onChange(['/songs', `/songs/${id}`]);
+      return song;
+    },
+    deleteSong(id) {
+      const result = store.deleteSong(id);
+      if (result) onChange(['/songs', `/songs/${id}`]);
+      return result;
+    },
+  };
+}
+
+// 3. Composition
+const rawDataStore = createDataStore();
+const notifyingStore = withMutationNotify(rawDataStore, (paths) => {
+  paths.forEach((p) => builderApp.build(p));
+});
+const schema = createSchema(notifyingStore);
 const executor = createServerExecutor(schema);
+
+// 4. Builder
+const builderApp = createBuilderApp(
+  executor,
+  getAssets,
+  (p, html) => htmlCache.set(p, html),
+  (p) => htmlCache.delete(p),
+);
+registerRoutes(builderApp);
 
 // GraphQL HTTP endpoint
 app.post('/graphql', createGraphQLEndpoint(schema));
 
-// Universal routes
+// 5. Cache middleware (before universal routes)
+app.use((req, res, next) => {
+  if (req.method !== 'GET') return next();
+  const cached = htmlCache.get(req.path);
+  if (cached) {
+    res.send(cached);
+    return;
+  }
+  next();
+});
+
+// Universal routes (fallback when cache misses)
 const universalApp = createServerApp(app, executor, getAssets);
 registerRoutes(universalApp);
 
+// 6. Pre-warm on startup
 app.listen(PORT, () => {
   console.log(`Server listening on http://localhost:${PORT}`);
+  Promise.all(
+    ['/', '/songs', '/songs/new'].map((p) => builderApp.build(p))
+  ).then(() => {
+    console.log(`Builder pre-warmed ${htmlCache.size} pages`);
+  });
 });

@@ -3,15 +3,7 @@ import { renderToString } from 'react-dom/server';
 import type { Request, Response, Express } from 'express';
 import type { UniversalApp, UniversalRequest, UniversalResponse, GraphQLExecutor } from '@shared/types';
 import { parseQueryString } from '@shared/utils';
-
-function serializeForInlineScript(value: unknown): string {
-  return JSON.stringify(value)
-    .replace(/</g, '\\u003C')
-    .replace(/>/g, '\\u003E')
-    .replace(/&/g, '\\u0026')
-    .replace(/\u2028/g, '\\u2028')
-    .replace(/\u2029/g, '\\u2029');
-}
+import { serializeForInlineScript, renderHtmlShell } from './html-shell';
 
 export function createServerApp(expressApp: Express, graphqlExecutor: GraphQLExecutor, getAssets: () => { js: string[]; css: string[]; inlineCss?: string }): UniversalApp {
   function createHandler(handler: (req: UniversalRequest, res: UniversalResponse) => Promise<void> | void) {
@@ -34,28 +26,11 @@ export function createServerApp(expressApp: Express, graphqlExecutor: GraphQLExe
 
       const res: UniversalResponse = {
         renderApp(element) {
-          const html = renderToString(element);
+          const appHtml = renderToString(element);
           const assets = getAssets();
           const initialData = serializeForInlineScript({ graphql: graphqlCache });
-          const cssLinks = assets.inlineCss
-            ? `<style>${assets.inlineCss}</style>`
-            : assets.css.map((href) => `<link rel="stylesheet" href="${href}">`).join('\n    ');
-          const scriptTags = assets.js.map((src) => `<script defer src="${src}"></script>`).join('\n    ');
 
-          expressRes.send(`<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>IsoReact</title>
-    ${cssLinks}
-</head>
-<body>
-    <div id="root">${html}</div>
-    <script>window.__INITIAL_DATA__ = ${initialData};</script>
-    ${scriptTags}
-</body>
-</html>`);
+          expressRes.send(renderHtmlShell({ appHtml, initialData, assets }));
         },
         setStatus(code) {
           expressRes.status(code);
