@@ -2,9 +2,10 @@ import express from 'express';
 import compression from 'compression';
 import path from 'path';
 import fs from 'fs';
+import { AsyncLocalStorage } from 'async_hooks';
 import { createSchema } from '@shared/graphql/schema';
 import type { DataStore } from '@shared/graphql';
-import { createDataStore, createServerExecutor, createGraphQLEndpoint } from './graphql';
+import { createDataStore, createServerExecutor, createGraphQLEndpoint, createCachedExecutor } from './graphql';
 import { createServerApp } from './create-server-app';
 import { createBuilderApp } from '@builder/builder-app';
 import { registerRoutes } from '@shared/universal-app';
@@ -135,16 +136,24 @@ function withMutationNotify(store: DataStore, onChange: (paths: string[]) => voi
 }
 
 // 3. Composition
+const routeContext = new AsyncLocalStorage<string>();
 const rawDataStore = createDataStore();
 const notifyingStore = withMutationNotify(rawDataStore, (paths) => {
-  paths.forEach((p) => builderApp.build(p));
+  paths.forEach((p) => {
+    invalidateRoute(p);
+    routeContext.run(p, () => builderApp.build(p));
+  });
 });
 const schema = createSchema(notifyingStore);
-const executor = createServerExecutor(schema);
+const baseExecutor = createServerExecutor(schema);
+const { executor: cachedExecutor, invalidateRoute } = createCachedExecutor(
+  baseExecutor,
+  routeContext,
+);
 
 // 4. Builder
 const builderApp = createBuilderApp(
-  executor,
+  cachedExecutor,
   getAssets,
   (p, html) => htmlCache.set(p, html),
   (p) => htmlCache.delete(p),
@@ -165,15 +174,22 @@ app.use((req, res, next) => {
   next();
 });
 
+// Route context middleware (tracks which route is being rendered)
+app.use((req, _res, next) => {
+  routeContext.run(req.path, next);
+});
+
 // Universal routes (fallback when cache misses)
-const universalApp = createServerApp(app, executor, getAssets);
+const universalApp = createServerApp(app, cachedExecutor, getAssets);
 registerRoutes(universalApp);
 
 // 6. Pre-warm on startup
 app.listen(PORT, () => {
   console.log(`Server listening on http://localhost:${PORT}`);
   Promise.all(
-    ['/', '/songs', '/songs/new'].map((p) => builderApp.build(p))
+    ['/', '/songs', '/songs/new'].map((p) =>
+      routeContext.run(p, () => builderApp.build(p))
+    )
   ).then(() => {
     console.log(`Builder pre-warmed ${htmlCache.size} pages`);
   });
