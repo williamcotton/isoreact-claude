@@ -3,3 +3,4 @@ export { createServerExecutor } from './executor';
 export { createGraphQLEndpoint } from './endpoint';
 export { createCachedExecutor } from './cached-executor';
 export type { CachedExecutorHandle } from './cached-executor';
+export { withMutationNotify } from './mutation-notify';
