@@ -1,6 +1,6 @@
 # IsoReact
 
-Universal React application where the same route definitions run on server (Express.js), client (browser-express shim), and CLI (Ink terminal UI).
+Universal React application where the same route definitions run on server (Express.js), client (browser-express shim), CLI (Ink terminal UI), and builder (ISR-style cache pre-warming).
 
 ## Quick Start
 
@@ -53,11 +53,12 @@ tests/
 ├── server.test.ts            # Integration: SSR song flow (supertest)
 ├── client.test.tsx           # Integration: client hydration song flow (jsdom)
 ├── cli.test.ts               # Integration: CLI song flow (cheerio)
+├── builder.test.ts           # Integration: builder song flow (cheerio)
 ├── drivers/                  # Shared test infrastructure
 │   ├── types.ts              # AppDriver interface
 │   └── test-executor.ts      # In-memory GraphQL executor for tests
 ├── specs/
-│   └── song-flow.spec.ts     # Shared spec run by server + client + CLI drivers
+│   └── song-flow.spec.ts     # Shared spec run by server + client + CLI + builder drivers
 └── unit/                     # Unit tests, mirroring src/ structure
     ├── components/           # React component tests (jsdom)
     │   ├── render-helper.tsx # createRoot + act → cheerio helper
@@ -69,7 +70,8 @@ tests/
     ├── server/               # Server unit tests
     │   ├── create-server-app.test.ts
     │   ├── data-store.test.ts
-    │   └── graphql-endpoint.test.ts
+    │   ├── graphql-endpoint.test.ts
+    │   └── cached-executor.test.ts
     ├── client/               # Client unit tests
     │   └── router.test.ts
     ├── cli/                  # CLI unit tests
@@ -77,13 +79,15 @@ tests/
     │   ├── cli-response.test.ts
     │   ├── html-to-ink.test.tsx
     │   └── interactive-browser.test.tsx
+    ├── builder/              # Builder unit tests
+    │   └── builder-app.test.ts
     └── shared/               # Shared utility tests
         └── url.test.ts
 ```
 
 ### Key patterns
 
-- **Universal integration tests**: `song-flow.spec.ts` defines a shared spec that runs identically against server (via supertest), client (via jsdom + `createRoot`/`act`), and CLI (via `createCliApp` + cheerio) through the `AppDriver` interface.
+- **Universal integration tests**: `song-flow.spec.ts` defines a shared spec that runs identically against server (via supertest), client (via jsdom + `createRoot`/`act`), CLI (via `createCliApp` + cheerio), and builder (via `createBuilderApp` + cheerio) through the `AppDriver` interface.
 - **Component unit tests**: Use `renderComponent()` from `render-helper.tsx` — renders with `createRoot` + `act`, returns a cheerio `$` for querying.
 - **Test executor**: `createTestExecutor()` provides an in-memory GraphQL executor with seed data, used by both integration drivers.
 - **Environment directives**: `// @vitest-environment jsdom` for browser tests, `// @vitest-environment node` for server tests.
@@ -116,6 +120,7 @@ This code runs identically on:
 - **Server**: Express.js with `renderToString()` for SSR
 - **Client**: Custom browser-express shim with `createRoot().render()`
 - **CLI**: Ink terminal UI with `renderToStaticMarkup()` → HTML-to-Ink conversion
+- **Builder**: Cache pre-warming with `renderToString()` → stored in memory for instant serving
 
 ### Directory Structure
 
@@ -127,17 +132,20 @@ src/
 │   │   ├── schema.ts      # GraphQL schema using graphql-js
 │   │   ├── operations.ts  # Pre-defined query/mutation strings
 │   │   └── index.ts
-│   ├── router.ts     # Shared path-to-regexp router (used by client + CLI)
+│   ├── router.ts     # Shared path-to-regexp router (used by client + CLI + builder)
 │   ├── utils/        # URL parsing utilities
 │   └── universal-app.tsx  # Route definitions
 ├── server/
-│   ├── index.ts      # Express entry point
+│   ├── index.ts      # Express entry point, wires up builder + cache middleware
 │   ├── create-server-app.ts  # Adapts Express to UniversalApp interface
-│   ├── html-shell.ts # HTML template with __INITIAL_DATA__ injection
+│   ├── html-shell.ts # Shared HTML template (used by server + builder)
+│   ├── assets.ts     # Asset resolution (dev vs prod)
 │   ├── graphql/      # Server GraphQL implementation
-│   │   ├── data-store.ts  # In-memory song storage
-│   │   ├── executor.ts    # Direct graphql() execution
-│   │   ├── endpoint.ts    # POST /graphql handler
+│   │   ├── data-store.ts       # In-memory song storage
+│   │   ├── executor.ts         # Direct graphql() execution
+│   │   ├── cached-executor.ts  # Query-level cache with route dependency tracking
+│   │   ├── mutation-notify.ts  # Wraps DataStore to trigger rebuilds on mutations
+│   │   ├── endpoint.ts         # POST /graphql handler
 │   │   └── index.ts
 │   └── middleware/   # GraphQL injection, auth
 ├── client/
@@ -159,6 +167,10 @@ src/
 │   ├── html-to-ink.tsx         # Converts HTML to Ink React components
 │   ├── InteractiveBrowser.tsx  # Interactive terminal browser (Ink component)
 │   └── ink.d.ts               # Type declarations for ink
+├── builder/          # Cache builder (ISR-style pre-warming)
+│   ├── builder-app.ts         # UniversalApp implementation for builder
+│   ├── builder-response.ts    # renderApp() via renderToString → cached HTML
+│   └── index.ts
 └── components/       # React components
     ├── Layout.tsx
     └── pages/
@@ -166,10 +178,12 @@ src/
 
 ### Data Flow
 
-1. **SSR**: Server executes GraphQL directly → renders React → injects `window.__INITIAL_DATA__.graphql` → sends HTML
-2. **Hydration**: Client reads cached GraphQL results from `__INITIAL_DATA__` → hydrates without re-fetching
-3. **Client Navigation**: Interceptor catches clicks → router matches → handler fetches via `POST /graphql` → React renders
-4. **CLI**: Executes GraphQL directly → renders React to static HTML → converts HTML to Ink terminal components
+1. **Cache Hit**: GET request → cache middleware checks `htmlCache` Map → serves pre-built HTML instantly
+2. **SSR (cache miss)**: Server executes GraphQL via cached executor → renders React → injects `window.__INITIAL_DATA__.graphql` → sends HTML
+3. **Hydration**: Client reads cached GraphQL results from `__INITIAL_DATA__` → hydrates without re-fetching
+4. **Client Navigation**: Interceptor catches clicks → router matches → handler fetches via `POST /graphql` → React renders
+5. **CLI**: Executes GraphQL directly → renders React to static HTML → converts HTML to Ink terminal components
+6. **Builder**: Pre-warms pages on startup → rebuilds affected pages on mutations via `withMutationNotify`
 
 ### GraphQL Pattern
 
@@ -177,9 +191,10 @@ Same `req.graphql(query, variables)` interface, different execution:
 
 | Environment | Execution Method |
 |-------------|------------------|
-| Server | Direct `graphql()` call from graphql-js (no HTTP) |
+| Server | Cached executor → direct `graphql()` call (query-level cache + route tracking) |
 | Browser | HTTP POST to `/graphql` endpoint |
 | CLI | Direct `graphql()` call from graphql-js (no HTTP) |
+| Builder | Cached executor → direct `graphql()` call (records results for `__INITIAL_DATA__`) |
 
 The `GraphQLExecutor` type is defined in `src/shared/types/graphql.types.ts`.
 
@@ -200,6 +215,21 @@ Third `UniversalApp` implementation in `src/cli/`:
 - **InteractiveBrowser.tsx**: Full-screen Ink component with browse/edit modes, j/k/arrow navigation, Enter to follow links or edit fields, form submission, status bar
 - Uses shared `Router` from `src/shared/router.ts` (extracted from browser-express, now shared with client)
 - Webpack config: `webpack.cli.js` — bundles all dependencies (including ESM-only ink), uses `null-loader` for CSS
+
+### Builder Runtime (ISR Cache)
+
+Fourth `UniversalApp` implementation in `src/builder/`:
+- **builder-app.ts**: Uses shared `Router`, `build(path)` renders GET routes → full HTML page via `renderToString` + `renderHtmlShell`. Follows redirects (max 10). Calls `saveToCache` on 200, `removeFromCache` on 404/unmatched.
+- **builder-response.ts**: Like cli-response but uses `renderToString` + captures GraphQL cache for `__INITIAL_DATA__`
+- **html-shell.ts**: Extracted from `create-server-app.ts` — shared HTML template function (used by both server and builder)
+- **assets.ts**: Extracted asset resolution logic (dev vs prod) into `createAssetResolver()`
+
+### GraphQL Caching
+
+Server-side query caching with automatic invalidation:
+- **cached-executor.ts**: Wraps the base GraphQL executor with query-level caching. Uses `AsyncLocalStorage` to track which route is being rendered and records query→route dependencies. Mutations always bypass cache.
+- **mutation-notify.ts**: `withMutationNotify()` wraps `DataStore` to detect create/update/delete operations and trigger cache invalidation + page rebuilds.
+- **Invalidation flow**: Mutation → `withMutationNotify` fires → `invalidateRoute` clears cached queries for affected paths → builder re-renders those pages → `htmlCache` updated
 
 ### Code Splitting
 
@@ -260,3 +290,5 @@ Dev mode differences (server):
 
 - Gzip compression enabled via `compression` middleware
 - Vendors bundle includes React and graphql-js
+- ISR-style cache: builder pre-warms `/`, `/songs`, `/songs/new` on startup; cache middleware serves pre-built HTML before falling through to SSR
+- Server-side GraphQL query caching with automatic invalidation on mutations
