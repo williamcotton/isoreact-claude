@@ -4,3 +4,8 @@ export { createGraphQLEndpoint } from './endpoint';
 export { createCachedExecutor } from './cached-executor';
 export type { CachedExecutorHandle } from './cached-executor';
 export { withMutationNotify } from './mutation-notify';
+export { openDatabase } from './database';
+export { createSqliteDataStore } from './sqlite-data-store';
+export { createSqliteCachedExecutor } from './sqlite-cached-executor';
+export { createSqliteHtmlCache } from './html-cache';
+export type { HtmlCache } from './html-cache';

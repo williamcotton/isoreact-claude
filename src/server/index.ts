@@ -3,7 +3,7 @@ import compression from 'compression';
 import path from 'path';
 import { AsyncLocalStorage } from 'async_hooks';
 import { createSchema } from '@shared/graphql/schema';
-import { createDataStore, createServerExecutor, createGraphQLEndpoint, createCachedExecutor, withMutationNotify } from './graphql';
+import { openDatabase, createSqliteDataStore, createServerExecutor, createGraphQLEndpoint, createSqliteCachedExecutor, createSqliteHtmlCache, withMutationNotify } from './graphql';
 import { createServerApp } from './create-server-app';
 import { createBuilderApp } from '@builder/builder-app';
 import { registerRoutes } from '@shared/universal-app';
@@ -29,12 +29,15 @@ if (isDev) {
 // Asset resolution
 const getAssets = createAssetResolver(isDev, clientDir);
 
+// SQLite database
+const db = openDatabase();
+
 // 1. Cache storage
-const htmlCache = new Map<string, string>();
+const htmlCache = createSqliteHtmlCache(db);
 
 // 2. Composition
 const routeContext = new AsyncLocalStorage<string>();
-const rawDataStore = createDataStore();
+const rawDataStore = createSqliteDataStore(db);
 const notifyingStore = withMutationNotify(rawDataStore, (paths) => {
   paths.forEach((p) => {
     invalidateRoute(p);
@@ -43,9 +46,10 @@ const notifyingStore = withMutationNotify(rawDataStore, (paths) => {
 });
 const schema = createSchema(notifyingStore);
 const baseExecutor = createServerExecutor(schema);
-const { executor: cachedExecutor, invalidateRoute } = createCachedExecutor(
+const { executor: cachedExecutor, invalidateRoute } = createSqliteCachedExecutor(
   baseExecutor,
   routeContext,
+  db,
 );
 
 // 3. Builder
@@ -79,6 +83,14 @@ app.use((req, _res, next) => {
 // Universal routes (fallback when cache misses)
 const universalApp = createServerApp(app, cachedExecutor, getAssets);
 registerRoutes(universalApp);
+
+// Graceful shutdown
+for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+  process.on(signal, () => {
+    db.close();
+    process.exit(0);
+  });
+}
 
 // 5. Pre-warm on startup
 app.listen(PORT, () => {
